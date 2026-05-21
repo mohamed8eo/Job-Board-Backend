@@ -1,28 +1,132 @@
 # GraphQL schema example
 #
 # https://gqlgen.com/getting-started/
-
-type Todo {
-  id: ID!
-  text: String!
-  done: Boolean!
-  user: User!
-}
+#Query Mutation
 
 type User {
-  id: ID!
+  id:        ID!
+  name:      String!
+  email:     String!
+  createdAt: String!
+  skills:    [Skill!]!
+  applications: [Application!]!
+}
+
+type Company {
+  id:        ID!
+  name:      String!
+  email:     String!
+  createdAt: String!
+  jobs:      [Job!]!
+}
+
+type Job {
+  id:          ID!
+  title:       String!
+  description: String!
+  location:    String!
+  remote:      Boolean!
+  salary:      Int
+  createdAt:   String!
+  company:     Company!
+  skills:      [Skill!]!
+  applications: [Application!]!
+}
+
+type Skill {
+  id:   ID!
   name: String!
 }
 
-type Query {
-  todos: [Todo!]!
+type Application {
+  id:        ID!
+  status:    String!
+  createdAt: String!
+  user:      User!
+  job:       Job!
 }
 
-input NewTodo {
-  text: String!
-  userId: String!
+type AuthPayload {
+  token: String!
+}
+
+# inputs
+input RegisterUser {
+  name:     String!
+  email:    String!
+  password: String!
+}
+
+input RegisterCompany {
+  name:     String!
+  email:    String!
+  password: String!
+}
+
+input LoginUser {
+  email:    String!
+  password: String!
+}
+
+input LoginCompany {
+  email:    String!
+  password: String!
+}
+
+input NewJob {
+  title:       String!
+  description: String!
+  location:    String!
+  remote:      Boolean!
+  salary:      Int
+  skillIDs:    [ID!]!
+}
+
+input NewSkill {
+  name: String!
+}
+
+input UpdateApplicationStatus {
+  applicationID: ID!
+  status:        String!
+}
+
+type Query {
+  # jobs
+  jobs:                    [Job!]!
+  job(id: ID!):            Job!
+  jobsByCompany(companyID: ID!): [Job!]!
+
+  # users
+  me:                      User!
+
+  # skills
+  skills:                  [Skill!]!
+
+  # applications
+  myApplications:          [Application!]!
+  jobApplications(jobID: ID!): [Application!]!
 }
 
 type Mutation {
-  createTodo(input: NewTodo!): Todo!
+  # auth
+  registerUser(input: RegisterUser!):       AuthPayload!
+  registerCompany(input: RegisterCompany!): AuthPayload!
+  loginUser(input: LoginUser!):             AuthPayload!
+  loginCompany(input: LoginCompany!):       AuthPayload!
+
+  # jobs (company only)
+  createJob(input: NewJob!):               Job!
+  deleteJob(id: ID!):                      Boolean!
+
+  # skills
+  createSkill(input: NewSkill!):           Skill!
+
+  # user skills
+  addSkillToUser(skillID: ID!):            User!
+  removeSkillFromUser(skillID: ID!):       User!
+
+  # applications (user only)
+  applyToJob(jobID: ID!):                  Application!
+  updateApplicationStatus(input: UpdateApplicationStatus!): Application!
 }

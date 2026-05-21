@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"log"
 	"net/http"
 	"os"
@@ -10,19 +11,40 @@ import (
 	"github.com/99designs/gqlgen/graphql/handler/lru"
 	"github.com/99designs/gqlgen/graphql/handler/transport"
 	"github.com/99designs/gqlgen/graphql/playground"
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/joho/godotenv"
 	"github.com/mohamed8eo/jobBoard/graph"
+	db "github.com/mohamed8eo/jobBoard/internal/db/sqlc"
 	"github.com/vektah/gqlparser/v2/ast"
 )
 
 const defaultPort = "8080"
 
 func main() {
+	godotenv.Load()
+
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = defaultPort
 	}
 
-	srv := handler.New(graph.NewExecutableSchema(graph.Config{Resolvers: &graph.Resolver{}}))
+	dbURL := os.Getenv("DB_URL")
+	if dbURL == "" {
+		log.Fatal("db url is missing")
+	}
+
+	// db & queries
+	conn, err := pgxpool.New(context.Background(), dbURL)
+	if err != nil {
+		log.Fatalf("error: %s\n", err.Error())
+	}
+	defer conn.Close()
+
+	queries := db.New(conn)
+
+	srv := handler.New(graph.NewExecutableSchema(graph.Config{Resolvers: &graph.Resolver{
+		Queries: queries,
+	}}))
 
 	srv.AddTransport(transport.Options{})
 	srv.AddTransport(transport.GET{})
@@ -30,13 +52,17 @@ func main() {
 
 	srv.SetQueryCache(lru.New[*ast.QueryDocument](1000))
 
-	srv.Use(extension.Introspection{})
+	if os.Getenv("ENV") == "dev" {
+		srv.Use(extension.Introspection{})
+	}
 	srv.Use(extension.AutomaticPersistedQuery{
 		Cache: lru.New[string](100),
 	})
 
-	http.Handle("/", playground.Handler("GraphQL playground", "/query"))
-	http.Handle("/query", srv)
+	mux := http.NewServeMux()
+
+	mux.Handle("/", playground.Handler("GraphQL playground", "/query"))
+	mux.Handle("/query", srv)
 
 	log.Printf("connect to http://localhost:%s/ for GraphQL playground", port)
 	log.Fatal(http.ListenAndServe(":"+port, nil))

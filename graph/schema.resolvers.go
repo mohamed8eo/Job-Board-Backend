@@ -7,19 +7,613 @@ package graph
 
 import (
 	"context"
-	"fmt"
+	"errors"
 
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/mohamed8eo/jobBoard/graph/model"
+	"github.com/mohamed8eo/jobBoard/internal/auth"
+	db "github.com/mohamed8eo/jobBoard/internal/db/sqlc"
+	"github.com/mohamed8eo/jobBoard/internal/validator"
 )
 
-// CreateTodo is the resolver for the createTodo field.
-func (r *mutationResolver) CreateTodo(ctx context.Context, input model.NewTodo) (*model.Todo, error) {
-	panic(fmt.Errorf("not implemented: CreateTodo - createTodo"))
+type contextKey string
+
+const (
+	userIDKey    contextKey = "userID"
+	companyIDKey contextKey = "companyID"
+)
+
+// RegisterUser is the resolver for the registerUser field.
+func (r *mutationResolver) RegisterUser(ctx context.Context, input model.RegisterUser) (*model.AuthPayload, error) {
+	password := input.Password
+	err := validator.ValidateName(input.Name)
+	if err != nil {
+		return nil, err
+	}
+
+	err = validator.ValidateEmail(input.Email)
+	if err != nil {
+		return nil, err
+	}
+
+	err = validator.ValidatePassword(password)
+	if err != nil {
+		return nil, err
+	}
+
+	hashPassword, err := auth.HashPassword(password)
+	if err != nil {
+		return nil, err
+	}
+
+	user, err := r.Queries.CreateUser(ctx, db.CreateUserParams{
+		Name:     input.Name,
+		Email:    input.Email,
+		Password: hashPassword,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	token, err := auth.Jwt(user.ID.String())
+	if err != nil {
+		return nil, err
+	}
+
+	return &model.AuthPayload{Token: token}, nil
 }
 
-// Todos is the resolver for the todos field.
-func (r *queryResolver) Todos(ctx context.Context) ([]*model.Todo, error) {
-	panic(fmt.Errorf("not implemented: Todos - todos"))
+// RegisterCompany is the resolver for the registerCompany field.
+func (r *mutationResolver) RegisterCompany(ctx context.Context, input model.RegisterCompany) (*model.AuthPayload, error) {
+	password := input.Password
+	err := validator.ValidateName(input.Name)
+	if err != nil {
+		return nil, err
+	}
+
+	err = validator.ValidateEmail(input.Email)
+	if err != nil {
+		return nil, err
+	}
+
+	err = validator.ValidatePassword(password)
+	if err != nil {
+		return nil, err
+	}
+
+	hashPassword, err := auth.HashPassword(password)
+	if err != nil {
+		return nil, err
+	}
+
+	company, err := r.Queries.CreateCompany(ctx, db.CreateCompanyParams{
+		Name:     input.Name,
+		Email:    input.Email,
+		Password: hashPassword,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	token, err := auth.Jwt(company.ID.String())
+	if err != nil {
+		return nil, err
+	}
+
+	return &model.AuthPayload{Token: token}, nil
+}
+
+// LoginUser is the resolver for the loginUser field.
+func (r *mutationResolver) LoginUser(ctx context.Context, input model.LoginUser) (*model.AuthPayload, error) {
+	user, err := r.Queries.GetUserByEmail(ctx, input.Email)
+	if err != nil {
+		return nil, err
+	}
+
+	match, err := auth.CheckPassword(input.Password, user.Password)
+	if err != nil || !match {
+		return nil, err
+	}
+
+	token, err := auth.Jwt(user.ID.String())
+	if err != nil {
+		return nil, err
+	}
+
+	return &model.AuthPayload{Token: token}, nil
+}
+
+// LoginCompany is the resolver for the loginCompany field.
+func (r *mutationResolver) LoginCompany(ctx context.Context, input model.LoginCompany) (*model.AuthPayload, error) {
+	company, err := r.Queries.GetUserByEmail(ctx, input.Email)
+	if err != nil {
+		return nil, err
+	}
+
+	match, err := auth.CheckPassword(input.Password, company.Password)
+	if err != nil || !match {
+		return nil, err
+	}
+
+	token, err := auth.Jwt(company.ID.String())
+	if err != nil {
+		return nil, err
+	}
+
+	return &model.AuthPayload{Token: token}, nil
+}
+
+// CreateJob is the resolver for the createJob field.
+func (r *mutationResolver) CreateJob(ctx context.Context, input model.NewJob) (*model.Job, error) {
+	companyID, ok := ctx.Value(companyIDKey).(string)
+	if !ok {
+		return nil, errors.New("company id not found on the context ")
+	}
+	pgUUID, err := auth.ParseUUID(companyID)
+	if err != nil {
+		return nil, err
+	}
+
+	job, err := r.Queries.CreateJobApp(ctx, db.CreateJobAppParams{
+		CompanyID:   pgUUID,
+		Title:       input.Title,
+		Description: input.Description,
+		Location:    input.Location,
+		Remote:      input.Remote,
+		Salary: pgtype.Int4{
+			Int32: int32(*input.Salary),
+			Valid: true,
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+	var salary *int
+	if job.Salary.Valid {
+		s := int(job.Salary.Int32)
+		salary = &s
+	}
+
+	return &model.Job{
+		ID:          job.ID.String(),
+		Title:       job.Title,
+		Description: job.Description,
+		Location:    job.Location,
+		Remote:      job.Remote,
+		Salary:      salary,
+	}, nil
+}
+
+// DeleteJob is the resolver for the deleteJob field.
+func (r *mutationResolver) DeleteJob(ctx context.Context, id string) (bool, error) {
+	parsedUUID, err := auth.ParseUUID(id)
+	if err != nil {
+		return false, err
+	}
+	if err = r.Queries.DeleteJobApp(ctx, parsedUUID); err != nil {
+		return false, err
+	}
+
+	return true, nil
+}
+
+// CreateSkill is the resolver for the createSkill field.
+func (r *mutationResolver) CreateSkill(ctx context.Context, input model.NewSkill) (*model.Skill, error) {
+	skill, err := r.Queries.CreateSkill(ctx, input.Name)
+	if err != nil {
+		return nil, err
+	}
+
+	return &model.Skill{ID: skill.ID.String(), Name: skill.Name}, nil
+}
+
+// AddSkillToUser is the resolver for the addSkillToUser field.
+func (r *mutationResolver) AddSkillToUser(ctx context.Context, skillID string) (*model.User, error) {
+	userID := ctx.Value(userIDKey).(string)
+	parsedUserID, err := auth.ParseUUID(userID)
+	if err != nil {
+		return nil, err
+	}
+
+	parsedSkillID, err := auth.ParseUUID(skillID)
+	if err != nil {
+		return nil, err
+	}
+
+	_, err = r.Queries.AddSkillToUser(ctx, db.AddSkillToUserParams{
+		UserID:  parsedUserID,
+		SkillID: parsedSkillID,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	user, err := r.Queries.GetUserByID(ctx, parsedUserID)
+	if err != nil {
+		return nil, err
+	}
+
+	return &model.User{
+		ID:    user.ID.String(),
+		Name:  user.Name,
+		Email: user.Email,
+	}, nil
+}
+
+// RemoveSkillFromUser is the resolver for the removeSkillFromUser field.
+func (r *mutationResolver) RemoveSkillFromUser(ctx context.Context, skillID string) (*model.User, error) {
+	userID := ctx.Value(userIDKey).(string)
+	parsedUserID, err := auth.ParseUUID(userID)
+	if err != nil {
+		return nil, err
+	}
+
+	parsedSkillID, err := auth.ParseUUID(skillID)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := r.Queries.RemoveSkillFromUser(ctx, db.RemoveSkillFromUserParams{
+		UserID:  parsedUserID,
+		SkillID: parsedSkillID,
+	}); err != nil {
+		return nil, err
+	}
+
+	user, err := r.Queries.GetUserByID(ctx, parsedUserID)
+	if err != nil {
+		return nil, err
+	}
+
+	return &model.User{
+		ID:    user.ID.String(),
+		Name:  user.Name,
+		Email: user.Email,
+	}, nil
+}
+
+// ApplyToJob is the resolver for the applyToJob field.
+func (r *mutationResolver) ApplyToJob(ctx context.Context, jobID string) (*model.Application, error) {
+	userID := ctx.Value(userIDKey).(string)
+	parsedUserID, err := auth.ParseUUID(userID)
+	if err != nil {
+		return nil, err
+	}
+
+	parsedJobID, err := auth.ParseUUID(jobID)
+	if err != nil {
+		return nil, err
+	}
+
+	application, err := r.Queries.CreateApplication(ctx, db.CreateApplicationParams{
+		UserID:   parsedUserID,
+		JobAppID: parsedJobID,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	// Fetch the full application data
+	user, err := r.Queries.GetUserByID(ctx, application.UserID)
+	if err != nil {
+		return nil, err
+	}
+
+	job, err := r.Queries.GetJobAppByID(ctx, application.JobAppID)
+	if err != nil {
+		return nil, err
+	}
+
+	var salary *int
+	if job.Salary.Valid {
+		s := int(job.Salary.Int32)
+		salary = &s
+	}
+
+	return &model.Application{
+		ID:        application.ID.String(),
+		Status:    application.Status,
+		CreatedAt: application.CreatedAt.Time.String(),
+		User: &model.User{
+			ID:    user.ID.String(),
+			Name:  user.Name,
+			Email: user.Email,
+		},
+		Job: &model.Job{
+			ID:          job.ID.String(),
+			Title:       job.Title,
+			Description: job.Description,
+			Location:    job.Location,
+			Remote:      job.Remote,
+			Salary:      salary,
+		},
+	}, nil
+}
+
+// UpdateApplicationStatus is the resolver for the updateApplicationStatus field.
+func (r *mutationResolver) UpdateApplicationStatus(ctx context.Context, input model.UpdateApplicationStatus) (*model.Application, error) {
+	parsedAppID, err := auth.ParseUUID(input.ApplicationID)
+	if err != nil {
+		return nil, err
+	}
+
+	application, err := r.Queries.UpdateApplicationStatus(ctx, db.UpdateApplicationStatusParams{
+		ID:     parsedAppID,
+		Status: input.Status,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	// Fetch the full application data
+	user, err := r.Queries.GetUserByID(ctx, application.UserID)
+	if err != nil {
+		return nil, err
+	}
+
+	job, err := r.Queries.GetJobAppByID(ctx, application.JobAppID)
+	if err != nil {
+		return nil, err
+	}
+
+	var salary *int
+	if job.Salary.Valid {
+		s := int(job.Salary.Int32)
+		salary = &s
+	}
+
+	return &model.Application{
+		ID:        application.ID.String(),
+		Status:    application.Status,
+		CreatedAt: application.CreatedAt.Time.String(),
+		User: &model.User{
+			ID:    user.ID.String(),
+			Name:  user.Name,
+			Email: user.Email,
+		},
+		Job: &model.Job{
+			ID:          job.ID.String(),
+			Title:       job.Title,
+			Description: job.Description,
+			Location:    job.Location,
+			Remote:      job.Remote,
+			Salary:      salary,
+		},
+	}, nil
+}
+
+// Jobs is the resolver for the jobs field.
+func (r *queryResolver) Jobs(ctx context.Context) ([]*model.Job, error) {
+	jobs, err := r.Queries.ListJobApps(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	var result []*model.Job
+	for _, job := range jobs {
+		var salary *int
+		if job.Salary.Valid {
+			s := int(job.Salary.Int32)
+			salary = &s
+		}
+
+		result = append(result, &model.Job{
+			ID:          job.ID.String(),
+			Title:       job.Title,
+			Description: job.Description,
+			Location:    job.Location,
+			Remote:      job.Remote,
+			Salary:      salary,
+		})
+	}
+
+	return result, nil
+}
+
+// Job is the resolver for the job field.
+func (r *queryResolver) Job(ctx context.Context, id string) (*model.Job, error) {
+	parsedID, err := auth.ParseUUID(id)
+	if err != nil {
+		return nil, err
+	}
+
+	job, err := r.Queries.GetJobAppByID(ctx, parsedID)
+	if err != nil {
+		return nil, err
+	}
+
+	var salary *int
+	if job.Salary.Valid {
+		s := int(job.Salary.Int32)
+		salary = &s
+	}
+
+	return &model.Job{
+		ID:          job.ID.String(),
+		Title:       job.Title,
+		Description: job.Description,
+		Location:    job.Location,
+		Remote:      job.Remote,
+		Salary:      salary,
+	}, nil
+}
+
+// JobsByCompany is the resolver for the jobsByCompany field.
+func (r *queryResolver) JobsByCompany(ctx context.Context, companyID string) ([]*model.Job, error) {
+	parsedCompanyID, err := auth.ParseUUID(companyID)
+	if err != nil {
+		return nil, err
+	}
+
+	jobs, err := r.Queries.ListJobAppsByCompany(ctx, parsedCompanyID)
+	if err != nil {
+		return nil, err
+	}
+
+	var result []*model.Job
+	for _, job := range jobs {
+		var salary *int
+		if job.Salary.Valid {
+			s := int(job.Salary.Int32)
+			salary = &s
+		}
+
+		result = append(result, &model.Job{
+			ID:          job.ID.String(),
+			Title:       job.Title,
+			Description: job.Description,
+			Location:    job.Location,
+			Remote:      job.Remote,
+			Salary:      salary,
+		})
+	}
+
+	return result, nil
+}
+
+// Me is the resolver for the me field.
+func (r *queryResolver) Me(ctx context.Context) (*model.User, error) {
+	meID := ctx.Value(userIDKey).(string)
+	parsedMeID, err := auth.ParseUUID(meID)
+	if err != nil {
+		return nil, err
+	}
+
+	me, err := r.Queries.GetUserByID(ctx, parsedMeID)
+	if err != nil {
+		return nil, err
+	}
+
+	return &model.User{
+		ID:    me.ID.String(),
+		Name:  me.Name,
+		Email: me.Email,
+	}, nil
+}
+
+// Skills is the resolver for the skills field.
+func (r *queryResolver) Skills(ctx context.Context) ([]*model.Skill, error) {
+	skills, err := r.Queries.ListSkills(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	var result []*model.Skill
+	for _, skill := range skills {
+		result = append(result, &model.Skill{
+			ID:   skill.ID.String(),
+			Name: skill.Name,
+		})
+	}
+
+	return result, nil
+}
+
+// MyApplications is the resolver for the myApplications field.
+func (r *queryResolver) MyApplications(ctx context.Context) ([]*model.Application, error) {
+	userID := ctx.Value(userIDKey).(string)
+	parsedUserID, err := auth.ParseUUID(userID)
+	if err != nil {
+		return nil, err
+	}
+
+	applications, err := r.Queries.ListApplicationsByUser(ctx, parsedUserID)
+	if err != nil {
+		return nil, err
+	}
+
+	var result []*model.Application
+	for _, app := range applications {
+		user, err := r.Queries.GetUserByID(ctx, app.UserID)
+		if err != nil {
+			return nil, err
+		}
+
+		job, err := r.Queries.GetJobAppByID(ctx, app.JobAppID)
+		if err != nil {
+			return nil, err
+		}
+
+		var salary *int
+		if job.Salary.Valid {
+			s := int(job.Salary.Int32)
+			salary = &s
+		}
+
+		result = append(result, &model.Application{
+			ID:        app.ID.String(),
+			Status:    app.Status,
+			CreatedAt: app.CreatedAt.Time.String(),
+			User: &model.User{
+				ID:    user.ID.String(),
+				Name:  user.Name,
+				Email: user.Email,
+			},
+			Job: &model.Job{
+				ID:          job.ID.String(),
+				Title:       job.Title,
+				Description: job.Description,
+				Location:    job.Location,
+				Remote:      job.Remote,
+				Salary:      salary,
+			},
+		})
+	}
+
+	return result, nil
+}
+
+// JobApplications is the resolver for the jobApplications field.
+func (r *queryResolver) JobApplications(ctx context.Context, jobID string) ([]*model.Application, error) {
+	parsedJobID, err := auth.ParseUUID(jobID)
+	if err != nil {
+		return nil, err
+	}
+
+	applications, err := r.Queries.ListApplicationsByJob(ctx, parsedJobID)
+	if err != nil {
+		return nil, err
+	}
+
+	var result []*model.Application
+	for _, app := range applications {
+		user, err := r.Queries.GetUserByID(ctx, app.UserID)
+		if err != nil {
+			return nil, err
+		}
+
+		job, err := r.Queries.GetJobAppByID(ctx, app.JobAppID)
+		if err != nil {
+			return nil, err
+		}
+
+		var salary *int
+		if job.Salary.Valid {
+			s := int(job.Salary.Int32)
+			salary = &s
+		}
+
+		result = append(result, &model.Application{
+			ID:        app.ID.String(),
+			Status:    app.Status,
+			CreatedAt: app.CreatedAt.Time.String(),
+			User: &model.User{
+				ID:    user.ID.String(),
+				Name:  user.Name,
+				Email: user.Email,
+			},
+			Job: &model.Job{
+				ID:          job.ID.String(),
+				Title:       job.Title,
+				Description: job.Description,
+				Location:    job.Location,
+				Remote:      job.Remote,
+				Salary:      salary,
+			},
+		})
+	}
+
+	return result, nil
 }
 
 // Mutation returns MutationResolver implementation.
@@ -28,5 +622,7 @@ func (r *Resolver) Mutation() MutationResolver { return &mutationResolver{r} }
 // Query returns QueryResolver implementation.
 func (r *Resolver) Query() QueryResolver { return &queryResolver{r} }
 
-type mutationResolver struct{ *Resolver }
-type queryResolver struct{ *Resolver }
+type (
+	mutationResolver struct{ *Resolver }
+	queryResolver    struct{ *Resolver }
+)

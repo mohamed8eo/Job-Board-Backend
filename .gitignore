@@ -1,0 +1,12 @@
+#env
+.env
+
+#air
+tmp/
+
+# go
+*.exe
+*.out
+
+# sqlc generated
+internal/db/sqlc/

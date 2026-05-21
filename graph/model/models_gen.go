@@ -2,25 +2,95 @@
 
 package model
 
+type Application struct {
+	ID        string `json:"id"`
+	Status    string `json:"status"`
+	CreatedAt string `json:"createdAt"`
+	User      *User  `json:"user"`
+	Job       *Job   `json:"job"`
+}
+
+type AuthPayload struct {
+	Token string `json:"token"`
+}
+
+type Company struct {
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	Email     string `json:"email"`
+	CreatedAt string `json:"createdAt"`
+	Jobs      []*Job `json:"jobs"`
+}
+
+type Job struct {
+	ID           string         `json:"id"`
+	Title        string         `json:"title"`
+	Description  string         `json:"description"`
+	Location     string         `json:"location"`
+	Remote       bool           `json:"remote"`
+	Salary       *int           `json:"salary,omitempty"`
+	CreatedAt    string         `json:"createdAt"`
+	Company      *Company       `json:"company"`
+	Skills       []*Skill       `json:"skills"`
+	Applications []*Application `json:"applications"`
+}
+
+type LoginCompany struct {
+	Email    string `json:"email"`
+	Password string `json:"password"`
+}
+
+type LoginUser struct {
+	Email    string `json:"email"`
+	Password string `json:"password"`
+}
+
 type Mutation struct {
 }
 
-type NewTodo struct {
-	Text   string `json:"text"`
-	UserID string `json:"userId"`
+type NewJob struct {
+	Title       string   `json:"title"`
+	Description string   `json:"description"`
+	Location    string   `json:"location"`
+	Remote      bool     `json:"remote"`
+	Salary      *int     `json:"salary,omitempty"`
+	SkillIDs    []string `json:"skillIDs"`
+}
+
+type NewSkill struct {
+	Name string `json:"name"`
 }
 
 type Query struct {
 }
 
-type Todo struct {
+type RegisterCompany struct {
+	Name     string `json:"name"`
+	Email    string `json:"email"`
+	Password string `json:"password"`
+}
+
+type RegisterUser struct {
+	Name     string `json:"name"`
+	Email    string `json:"email"`
+	Password string `json:"password"`
+}
+
+type Skill struct {
 	ID   string `json:"id"`
-	Text string `json:"text"`
-	Done bool   `json:"done"`
-	User *User  `json:"user"`
+	Name string `json:"name"`
+}
+
+type UpdateApplicationStatus struct {
+	ApplicationID string `json:"applicationID"`
+	Status        string `json:"status"`
 }
 
 type User struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
+	ID           string         `json:"id"`
+	Name         string         `json:"name"`
+	Email        string         `json:"email"`
+	CreatedAt    string         `json:"createdAt"`
+	Skills       []*Skill       `json:"skills"`
+	Applications []*Application `json:"applications"`
 }
