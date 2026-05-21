@@ -77,10 +77,13 @@ go mod download
 cp .env.example .env
 
 # Run database migrations
-goose -dir internal/db/migrations postgres "postgres://user:pass@localhost:5432/jobboard" up
+just up 
+
+#Run  sqlc queries 
+just sqlc
 
 # Start development server
-air
+just air 
 ```
 
 ### GraphQL Playground
