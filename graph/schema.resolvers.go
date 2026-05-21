@@ -7,12 +7,12 @@ package graph
 
 import (
 	"context"
-	"errors"
 
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/mohamed8eo/jobBoard/graph/model"
 	"github.com/mohamed8eo/jobBoard/internal/auth"
 	db "github.com/mohamed8eo/jobBoard/internal/db/sqlc"
+	"github.com/mohamed8eo/jobBoard/internal/middleware"
 	"github.com/mohamed8eo/jobBoard/internal/validator"
 )
 
@@ -55,7 +55,7 @@ func (r *mutationResolver) RegisterUser(ctx context.Context, input model.Registe
 		return nil, err
 	}
 
-	token, err := auth.Jwt(user.ID.String())
+	token, err := auth.Jwt(user.ID.String(), "user")
 	if err != nil {
 		return nil, err
 	}
@@ -95,7 +95,7 @@ func (r *mutationResolver) RegisterCompany(ctx context.Context, input model.Regi
 		return nil, err
 	}
 
-	token, err := auth.Jwt(company.ID.String())
+	token, err := auth.Jwt(company.ID.String(), "company")
 	if err != nil {
 		return nil, err
 	}
@@ -115,7 +115,7 @@ func (r *mutationResolver) LoginUser(ctx context.Context, input model.LoginUser)
 		return nil, err
 	}
 
-	token, err := auth.Jwt(user.ID.String())
+	token, err := auth.Jwt(user.ID.String(), "user")
 	if err != nil {
 		return nil, err
 	}
@@ -135,7 +135,7 @@ func (r *mutationResolver) LoginCompany(ctx context.Context, input model.LoginCo
 		return nil, err
 	}
 
-	token, err := auth.Jwt(company.ID.String())
+	token, err := auth.Jwt(company.ID.String(), "company")
 	if err != nil {
 		return nil, err
 	}
@@ -145,9 +145,9 @@ func (r *mutationResolver) LoginCompany(ctx context.Context, input model.LoginCo
 
 // CreateJob is the resolver for the createJob field.
 func (r *mutationResolver) CreateJob(ctx context.Context, input model.NewJob) (*model.Job, error) {
-	companyID, ok := ctx.Value(companyIDKey).(string)
-	if !ok {
-		return nil, errors.New("company id not found on the context ")
+	companyID, err := middleware.RequireCompany(ctx)
+	if err != nil {
+		return nil, err
 	}
 	pgUUID, err := auth.ParseUUID(companyID)
 	if err != nil {
@@ -186,6 +186,11 @@ func (r *mutationResolver) CreateJob(ctx context.Context, input model.NewJob) (*
 
 // DeleteJob is the resolver for the deleteJob field.
 func (r *mutationResolver) DeleteJob(ctx context.Context, id string) (bool, error) {
+	_, err := middleware.RequireCompany(ctx)
+	if err != nil {
+		return false, err
+	}
+
 	parsedUUID, err := auth.ParseUUID(id)
 	if err != nil {
 		return false, err
@@ -199,6 +204,11 @@ func (r *mutationResolver) DeleteJob(ctx context.Context, id string) (bool, erro
 
 // CreateSkill is the resolver for the createSkill field.
 func (r *mutationResolver) CreateSkill(ctx context.Context, input model.NewSkill) (*model.Skill, error) {
+	_, err := middleware.RequireCompany(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	skill, err := r.Queries.CreateSkill(ctx, input.Name)
 	if err != nil {
 		return nil, err
@@ -209,7 +219,11 @@ func (r *mutationResolver) CreateSkill(ctx context.Context, input model.NewSkill
 
 // AddSkillToUser is the resolver for the addSkillToUser field.
 func (r *mutationResolver) AddSkillToUser(ctx context.Context, skillID string) (*model.User, error) {
-	userID := ctx.Value(userIDKey).(string)
+	userID, err := middleware.RequireUser(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	parsedUserID, err := auth.ParseUUID(userID)
 	if err != nil {
 		return nil, err
@@ -242,7 +256,11 @@ func (r *mutationResolver) AddSkillToUser(ctx context.Context, skillID string) (
 
 // RemoveSkillFromUser is the resolver for the removeSkillFromUser field.
 func (r *mutationResolver) RemoveSkillFromUser(ctx context.Context, skillID string) (*model.User, error) {
-	userID := ctx.Value(userIDKey).(string)
+	userID, err := middleware.RequireUser(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	parsedUserID, err := auth.ParseUUID(userID)
 	if err != nil {
 		return nil, err
@@ -274,7 +292,11 @@ func (r *mutationResolver) RemoveSkillFromUser(ctx context.Context, skillID stri
 
 // ApplyToJob is the resolver for the applyToJob field.
 func (r *mutationResolver) ApplyToJob(ctx context.Context, jobID string) (*model.Application, error) {
-	userID := ctx.Value(userIDKey).(string)
+	userID, err := middleware.RequireUser(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	parsedUserID, err := auth.ParseUUID(userID)
 	if err != nil {
 		return nil, err
@@ -332,6 +354,11 @@ func (r *mutationResolver) ApplyToJob(ctx context.Context, jobID string) (*model
 
 // UpdateApplicationStatus is the resolver for the updateApplicationStatus field.
 func (r *mutationResolver) UpdateApplicationStatus(ctx context.Context, input model.UpdateApplicationStatus) (*model.Application, error) {
+	_, err := middleware.RequireCompany(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	parsedAppID, err := auth.ParseUUID(input.ApplicationID)
 	if err != nil {
 		return nil, err
@@ -473,7 +500,11 @@ func (r *queryResolver) JobsByCompany(ctx context.Context, companyID string) ([]
 
 // Me is the resolver for the me field.
 func (r *queryResolver) Me(ctx context.Context) (*model.User, error) {
-	meID := ctx.Value(userIDKey).(string)
+	meID, err := middleware.RequireAuth(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	parsedMeID, err := auth.ParseUUID(meID)
 	if err != nil {
 		return nil, err
@@ -511,7 +542,11 @@ func (r *queryResolver) Skills(ctx context.Context) ([]*model.Skill, error) {
 
 // MyApplications is the resolver for the myApplications field.
 func (r *queryResolver) MyApplications(ctx context.Context) ([]*model.Application, error) {
-	userID := ctx.Value(userIDKey).(string)
+	userID, err := middleware.RequireUser(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	parsedUserID, err := auth.ParseUUID(userID)
 	if err != nil {
 		return nil, err
@@ -565,6 +600,11 @@ func (r *queryResolver) MyApplications(ctx context.Context) ([]*model.Applicatio
 
 // JobApplications is the resolver for the jobApplications field.
 func (r *queryResolver) JobApplications(ctx context.Context, jobID string) ([]*model.Application, error) {
+	_, err := middleware.RequireCompany(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	parsedJobID, err := auth.ParseUUID(jobID)
 	if err != nil {
 		return nil, err

@@ -12,45 +12,46 @@ import (
 
 const Issuer = "token"
 
-func Jwt(userID string) (string, error) {
+type Claims struct {
+	Role string `json:"role"`
+	jwt.RegisteredClaims
+}
+
+func Jwt(userID string, role string) (string, error) {
 	jwtSecret := os.Getenv("SECRET_JWT")
+	claims := Claims{
+		Role: role,
+		RegisteredClaims: jwt.RegisteredClaims{
+			Issuer:    Issuer,
+			IssuedAt:  jwt.NewNumericDate(time.Now().UTC()),
+			ExpiresAt: jwt.NewNumericDate(time.Now().UTC().Add(24 * time.Hour)),
+			Subject:   userID,
+		},
+	}
 
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.RegisteredClaims{
-		Issuer:    Issuer,
-		IssuedAt:  jwt.NewNumericDate(time.Now().UTC()),
-		ExpiresAt: jwt.NewNumericDate(time.Now().UTC().Add(24 * time.Hour)),
-		Subject:   userID,
-	})
-
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	return token.SignedString([]byte(jwtSecret))
 }
 
-func ValidateJwt(tokenString, tokenSecret string) (uuid.UUID, error) {
-	claims := &jwt.RegisteredClaims{}
+func ValidateJwt(tokenString string, secret string) (*Claims, error) {
+	claims := &Claims{}
 
-	token, err := jwt.ParseWithClaims(tokenString, claims, func(t *jwt.Token) (any, error) {
-		return []byte(tokenSecret), nil
-	})
+	token, err := jwt.ParseWithClaims(
+		tokenString,
+		claims,
+		func(token *jwt.Token) (any, error) {
+			return []byte(secret), nil
+		},
+	)
 	if err != nil {
-		return uuid.Nil, err
+		return nil, err
 	}
 
-	userID, err := token.Claims.GetSubject()
-	if userID == "" || err != nil {
-		return uuid.Nil, err
+	if !token.Valid {
+		return nil, jwt.ErrTokenInvalidClaims
 	}
 
-	issuer, err := token.Claims.GetIssuer()
-	if err != nil || issuer != Issuer {
-		return uuid.Nil, err
-	}
-
-	id, err := uuid.Parse(userID)
-	if err != nil {
-		return uuid.Nil, err
-	}
-
-	return id, nil
+	return claims, nil
 }
 
 func HashPassword(password string) (string, error) {

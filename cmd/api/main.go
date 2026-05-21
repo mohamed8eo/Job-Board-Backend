@@ -15,6 +15,7 @@ import (
 	"github.com/joho/godotenv"
 	"github.com/mohamed8eo/jobBoard/graph"
 	db "github.com/mohamed8eo/jobBoard/internal/db/sqlc"
+	"github.com/mohamed8eo/jobBoard/internal/middleware"
 	"github.com/vektah/gqlparser/v2/ast"
 )
 
@@ -39,6 +40,7 @@ func main() {
 		log.Fatalf("error: %s\n", err.Error())
 	}
 	defer conn.Close()
+	log.Println("connect to db")
 
 	queries := db.New(conn)
 
@@ -62,8 +64,8 @@ func main() {
 	mux := http.NewServeMux()
 
 	mux.Handle("/", playground.Handler("GraphQL playground", "/query"))
-	mux.Handle("/query", srv)
+	mux.Handle("/query", middleware.Logger(middleware.Auth(srv)))
 
 	log.Printf("connect to http://localhost:%s/ for GraphQL playground", port)
-	log.Fatal(http.ListenAndServe(":"+port, nil))
+	log.Fatal(http.ListenAndServe(":"+port, mux))
 }
